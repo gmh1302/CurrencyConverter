@@ -2,19 +2,25 @@
 
 import { ref, onMounted, watch } from 'vue';
 import axios from 'axios';
-import CurrencyLineChart from '../components/currencyLineChart.vue';
+import CurrencyLineChart from '../components/chart/currencyLineChart.vue';
+import Alert from '../components/alert/alertDialog.vue'
 
 /** 변수 선언 **/
 const amount = ref(1);
 const fromCurrency = ref('USD');
 const toCurrency = ref('KRW');
 const displayAmount = ref(1);
+const displayFromCurrency = ref('USD');
+const displayToCurrency = ref('KRW');
 const convertedAmount = ref<number | null>(null);
 const currencies = ref([]);
 const activeTab = ref('converter'); // 탭을 관리하는 상태 변수
 
 const chartData = ref<number[]>([]);
 const chartLabels = ref<string[]>([]);
+
+const alertVisible = ref(false);
+const alertMessage = ref('');
 
 onMounted(() => {
   getCurrencies();
@@ -34,8 +40,9 @@ const getCurrencies = async () => {
     const response = await fetch('https://api.frankfurter.app/currencies');
     const data = await response.json();
     currencies.value = Object.keys(data);
+
   } catch (error) {
-    console.error('Error fetching currencies:', error);
+    await alertFunc(true, '환율 목록 조회에 실패했습니다.');
   }
 };
 
@@ -63,9 +70,8 @@ const getWeeklyCurrencyData = async (fromCurrency: string, toCurrency: string) =
     chartLabels.value = labels;
     chartData.value = rates;
 
-    console.log('Weekly Currency Data:', response.data);
   } catch (error) {
-    console.error('Error fetching weekly currency data:', error);
+    await alertFunc(true, '1주일 간의 환율 데이터 조회에 실패했습니다.');
   }
 };
 
@@ -75,6 +81,8 @@ const convertCurrency = async () => {
   if (fromCurrency.value === toCurrency.value) {
     convertedAmount.value = amount.value;
     displayAmount.value = amount.value;
+    displayFromCurrency.value = fromCurrency.value;
+    displayToCurrency.value = toCurrency.value;
     return;
   }
 
@@ -90,14 +98,30 @@ const convertCurrency = async () => {
     if (rate) {
       convertedAmount.value = rate * amount.value;
       displayAmount.value = amount.value;
+      displayFromCurrency.value = fromCurrency.value;
+      displayToCurrency.value = toCurrency.value;
     } else {
       convertedAmount.value = null;
     }
+
   } catch (error) {
-    console.error('Error converting currency:', error);
+    await alertFunc(true, '환율 변환에 실패했습니다.');
     convertedAmount.value = null;
   }
 };
+
+const changeTab = async (tab: string) => {
+  if (tab === 'chart' && fromCurrency.value === toCurrency.value) {
+    await alertFunc(true, '같은 통화로는 환율 차트를 확인할 수 없습니다.')
+  } else {
+    activeTab.value = tab;
+  }
+}
+
+const alertFunc = async (showAlert: boolean, message: string) => {
+  alertVisible.value = showAlert;
+  alertMessage.value = message;
+}
 
 </script>
 
@@ -108,8 +132,8 @@ const convertCurrency = async () => {
 
       <!-- 탭 버튼 추가 -->
       <div class="tabs">
-        <button :class="{'active': activeTab === 'converter'}" @click="activeTab = 'converter'">환율 변환기</button>
-        <button :class="{'active': activeTab === 'chart'}" @click="activeTab = 'chart'">환율 변동 차트</button>
+        <button :class="{'active': activeTab === 'converter'}" @click="changeTab('converter')">환율 변환기</button>
+        <button :class="{'active': activeTab === 'chart'}" @click="changeTab('chart')">환율 변동 차트</button>
       </div>
 
       <!-- 환율 변환기 탭 내용 -->
@@ -136,7 +160,7 @@ const convertCurrency = async () => {
         </div>
         <button @click="convertCurrency">변환</button>
         <div v-if="convertedAmount !== null" class="result">
-          <h2>{{ displayAmount }} {{ fromCurrency }} = {{ convertedAmount }} {{ toCurrency }}</h2>
+          <h2>{{ displayAmount }} {{ displayFromCurrency }} = {{ convertedAmount }} {{ displayToCurrency }}</h2>
         </div>
       </div>
 
@@ -149,6 +173,10 @@ const convertCurrency = async () => {
           :toCurrency="toCurrency"
         />
       </div>
+
+      <!-- 알림창 컴포넌트 -->
+      <Alert v-if="alertVisible" :message="alertMessage" />
+
     </div>
   </div>
 </template>
