@@ -1,305 +1,279 @@
+<template>
+  <v-container class="py-10">
+    <v-card class="custom-card">
+      <!-- 탭 버튼 -->
+      <v-tabs v-model="activeTab" class="tabs-container">
+        <v-tab class="tab" value="converter"><span style="color: white; font-size: 21px;">환율 변환기</span></v-tab>
+        <v-tab class="tab" value="chart"><span style="color: white; font-size: 21px;">환율 변동 차트</span></v-tab>
+      </v-tabs>
+
+      <!-- 탭 내용 -->
+      <v-card-text>
+        <!-- 1. 환율 변동 차트 -->
+        <v-row v-if="activeTab === 'converter'" class="converter-content">
+          <!-- 첫 번째 필드 -->
+          <v-col cols="12" style="height: 100px;">
+            <v-row align="center">
+              <v-col cols="8">
+                <v-select
+                    v-model="fromCurrency"
+                    :items="currencies"
+                    label="Currency"
+                    outlined
+                    class="currency-select-box mt-1"
+                    item-title="code"
+                    item-value="code"
+                    style="height: 100px;"
+                >
+                  <template #item="{ item, props }">
+                    <v-list-item v-bind="props">
+                      <v-avatar>
+                        <img :src="item.raw.flag" :alt="item.raw.flag"  style="width: 30px; height: 20px;" />
+                      </v-avatar>
+                      <span style="margin-left: 10px;">{{ item.raw.countryName }}</span>
+                    </v-list-item>
+                  </template>
+                </v-select>
+              </v-col>
+              <v-col cols="4">
+                <v-text-field
+                    v-model="amount1"
+                    label="Amount"
+                    type="number"
+                    outlined
+                    class="amount-text-field mt-1"
+                    @input="handleAmountInput('amount1', $event.target.value)"
+                    style="height: 100px;"
+                ></v-text-field>
+              </v-col>
+            </v-row>
+          </v-col>
+
+          <!-- 구분선 -->
+          <v-col cols="12">
+            <hr class="divider" />
+          </v-col>
+
+          <!-- 두 번째 필드 -->
+          <v-col cols="12" style="height: 100px;">
+            <v-row align="center">
+              <v-col cols="8">
+                <v-select
+                    v-model="toCurrency"
+                    :items="currencies"
+                    label="Currency"
+                    outlined
+                    class="currency-select-box mt-1"
+                    item-title="code"
+                    item-value="code"
+                    style="height: 100px;"
+                >
+                  <template #item="{ item, props }">
+                    <v-list-item v-bind="props">
+                      <v-avatar>
+                        <img :src="item.raw.flag" :alt="item.raw.flag"  style="width: 30px; height: 20px;" />
+                      </v-avatar>
+                      <span style="margin-left: 10px;">{{ item.raw.countryName }}</span>
+                    </v-list-item>
+                  </template>
+                </v-select>
+              </v-col>
+              <v-col cols="4">
+                <v-text-field
+                    v-model="amount2"
+                    label="Amount"
+                    type="number"
+                    outlined
+                    class="amount-text-field mt-1"
+                    @input="handleAmountInput('amount2', $event.target.value)"
+                    style="height: 100px;"
+                ></v-text-field>
+              </v-col>
+            </v-row>
+          </v-col>
+        </v-row>
+
+        <!-- 2. 환율 변동 차트 -->
+        <v-row v-else>
+          <p>환율 변동 차트 콘텐츠가 여기에 표시됩니다.</p>
+        </v-row>
+      </v-card-text>
+    </v-card>
+  </v-container>
+</template>
+
 <script lang="ts" setup>
+
+// TODO 1 : 더 많은 국가 조회되도록 수정. https://api.frankfurter.app/currencies 링크 말고 더 좋은 링크 찾기.
+// TODO 2 : 위 링크 찾게되면, 국가별로 조회되도록 로직 수정 -> 화폐 단위 겹쳐도 됨. 그냥 전부 보여주는게 사용자 입장에서 좋을듯.
+// TODO 3 : Chart.js를 활용한 차트 개발. 어떤 차트를 어떻게 보여줄지? 1일, 1주일, 1개월, 1년 등 기간별로도 보여줄 것인지? 고려 필요.
+// TODO 4 : 소스 정리 && 전반적인 UI 디자인 손보기
 
 import { ref, onMounted, watch } from 'vue';
 import axios from 'axios';
-import CurrencyLineChart from '../components/chart/currencyLineChart.vue';
-import Alert from '../components/alert/alertDialog.vue'
 
-/** 변수 선언 **/
-const amount = ref(1);
+const activeTab = ref('converter');
+const amount1 = ref<number | ''>(1);
+const amount2 = ref<number | ''>(0);
 const fromCurrency = ref('USD');
 const toCurrency = ref('KRW');
-const displayAmount = ref(1);
-const displayFromCurrency = ref('USD');
-const displayToCurrency = ref('KRW');
-const convertedAmount = ref<number | null>(null);
-const currencies = ref([]);
-const activeTab = ref('converter'); // 탭을 관리하는 상태 변수
+const currencies = ref<any[]>([]); // 화폐 단위 Select Box 목록
+const rates = ref<Record<string, Record<string, number>>>({});
 
-const chartData = ref<number[]>([]);
-const chartLabels = ref<string[]>([]);
-
-const alertVisible = ref(false);
-const alertMessage = ref('');
-
-onMounted(() => {
-  getCurrencies();
-  getWeeklyCurrencyData(fromCurrency.value, toCurrency.value);
+onMounted(async () => {
+  await fetchCurrencies();
+  await fetchRates();
 });
 
-// fromCurrency, toCurrency 변경 시, 최근 1주일 데이터 재조회
-watch([fromCurrency, toCurrency], () => {
-  getWeeklyCurrencyData(fromCurrency.value, toCurrency.value);
-});
-
-/** 함수 **/
-
-// 환율 목록 조회
-const getCurrencies = async () => {
+const fetchCurrencies = async () => {
   try {
-    const response = await fetch('https://api.frankfurter.app/currencies');
-    const data = await response.json();
-    currencies.value = Object.keys(data);
+    const validCurrencies = await (await fetch('https://api.frankfurter.app/currencies')).json();
+    const countries = await (await fetch('https://restcountries.com/v3.1/all')).json();
 
-  } catch (error) {
-    await alertFunc(true, '환율 목록 조회에 실패했습니다.');
-  }
-};
+    console.log("validCurrencies ::: ", validCurrencies);
+    console.log("countries ::: ", countries);
 
-// 최근 1주일 간의 특정 나라 환율 데이터 조회(주말 제외)
-const getWeeklyCurrencyData = async (fromCurrency: string, toCurrency: string) => {
-  const today = new Date();
-  const lastWeek = new Date();
-  lastWeek.setDate(today.getDate() - 7);
+    currencies.value = Object.entries(validCurrencies).map(([code]) => {
+      const country = countries.find((c: any) =>
+          c.currencies && Object.keys(c.currencies).includes(code)
+      );
 
-  const start = lastWeek.toISOString().split('T')[0]; // yyyy-mm-dd 형식
-  const end = today.toISOString().split('T')[0];
-
-  try {
-    const response = await axios.get(`https://api.frankfurter.app/${start}..${end}`, {
-      params: {
-        from: fromCurrency,
-        to: toCurrency,
-      },
+      return {
+        code,
+        flag: country?.flags?.png || '', // 국기 URL
+        countryName: country?.name?.common || '', // 나라 이름
+      };
     });
-
-    const data = response.data.rates;
-    const labels = Object.keys(data);
-    const rates = labels.map(date => data[date][toCurrency]);
-
-    chartLabels.value = labels;
-    chartData.value = rates;
-
   } catch (error) {
-    await alertFunc(true, '1주일 간의 환율 데이터 조회에 실패했습니다.');
+    console.error('Error fetching currencies:', error);
   }
 };
 
-// [변환] 버튼 클릭 시, 환율 변환
-const convertCurrency = async () => {
-  // 화폐가 같을 경우, 변환 없이 그대로 반환
-  if (fromCurrency.value === toCurrency.value) {
-    convertedAmount.value = amount.value;
-    displayAmount.value = amount.value;
-    displayFromCurrency.value = fromCurrency.value;
-    displayToCurrency.value = toCurrency.value;
-    return;
-  }
-
+const fetchRates = async () => {
   try {
     const response = await axios.get('https://api.frankfurter.app/latest', {
-      params: {
-        from: fromCurrency.value,
-        to: toCurrency.value,
-      },
+      params: { from: fromCurrency.value },
+    });
+    const reverseResponse = await axios.get('https://api.frankfurter.app/latest', {
+      params: { from: toCurrency.value },
     });
 
-    const rate = response.data.rates[toCurrency.value];
-    if (rate) {
-      convertedAmount.value = rate * amount.value;
-      displayAmount.value = amount.value;
-      displayFromCurrency.value = fromCurrency.value;
-      displayToCurrency.value = toCurrency.value;
-    } else {
-      convertedAmount.value = null;
-    }
+    rates.value[fromCurrency.value] = response.data.rates;
+    rates.value[toCurrency.value] = reverseResponse.data.rates;
 
+    updateAmount2();
   } catch (error) {
-    await alertFunc(true, '환율 변환에 실패했습니다.');
-    convertedAmount.value = null;
+    console.error('Failed to fetch exchange rates:', error);
   }
 };
 
-const changeTab = async (tab: string) => {
-  if (tab === 'chart' && fromCurrency.value === toCurrency.value) {
-    await alertFunc(true, '같은 통화로는 환율 차트를 확인할 수 없습니다.')
-  } else {
-    activeTab.value = tab;
+// 소수점 처리 -> 2자리까지만 허용
+const limitToDecimals = (value: string) => {
+  if (value.includes('.')) {
+    const [integer, decimal] = value.split('.');
+    return decimal.length > 2 ? `${integer}.${decimal.slice(0, 2)}` : value;
   }
-}
+  return value;
+};
 
-const alertFunc = async (showAlert: boolean, message: string) => {
-  alertVisible.value = showAlert;
-  alertMessage.value = message;
-}
+// 양방향 금액 수정 시, 업데이트 처리 핸들러
+const handleAmountInput = (field: 'amount1' | 'amount2', value: string) => {
+  const formattedValue = parseFloat(limitToDecimals(value)) || 0;
 
+  if (field === 'amount1') {
+    amount1.value = formattedValue;
+    updateAmount2();
+  } else {
+    amount2.value = formattedValue;
+    updateAmount1();
+  }
+};
+
+const updateAmount1 = () => {
+  if (fromCurrency.value === toCurrency.value) {
+    amount1.value = amount2.value;
+    return;
+  }
+  if (rates.value[toCurrency.value] && rates.value[toCurrency.value][fromCurrency.value]) {
+    amount1.value = parseFloat((amount2.value * rates.value[toCurrency.value][fromCurrency.value]).toFixed(2)) || 0;
+  }
+};
+
+const updateAmount2 = () => {
+  if (fromCurrency.value === toCurrency.value) {
+    amount2.value = amount1.value;
+    return;
+  }
+  if (rates.value[fromCurrency.value] && rates.value[fromCurrency.value][toCurrency.value]) {
+    amount2.value = parseFloat((amount1.value * rates.value[fromCurrency.value][toCurrency.value]).toFixed(2)) || 0;
+  }
+};
+
+watch([fromCurrency, toCurrency], async ([newFrom, newTo], [oldFrom, oldTo]) => {
+  if (newFrom !== oldFrom || newTo !== oldTo) {
+    await fetchRates();
+  }
+});
 </script>
 
-<template>
-  <div class="page-container">
-    <div class="currency-converter">
-      <h1>환율 변환기</h1>
-
-      <!-- 탭 버튼 추가 -->
-      <div class="tabs">
-        <button :class="{'active': activeTab === 'converter'}" @click="changeTab('converter')">환율 변환기</button>
-        <button :class="{'active': activeTab === 'chart'}" @click="changeTab('chart')">환율 변동 차트</button>
-      </div>
-
-      <!-- 환율 변환기 탭 내용 -->
-      <div v-if="activeTab === 'converter'" class="converter-box">
-        <div class="input-group">
-          <label for="amount">Amount</label>
-          <input v-model="amount" id="amount" type="number" placeholder="Enter amount" />
-        </div>
-        <div class="input-group">
-          <label for="fromCurrency">From</label>
-          <select v-model="fromCurrency" id="fromCurrency">
-            <option v-for="currency in currencies" :key="currency" :value="currency">
-              {{ currency }}
-            </option>
-          </select>
-        </div>
-        <div class="input-group">
-          <label for="toCurrency">To</label>
-          <select v-model="toCurrency" id="toCurrency">
-            <option v-for="currency in currencies" :key="currency" :value="currency">
-              {{ currency }}
-            </option>
-          </select>
-        </div>
-        <button @click="convertCurrency">변환</button>
-        <div v-if="convertedAmount !== null" class="result">
-          <h2>{{ displayAmount }} {{ displayFromCurrency }} = {{ convertedAmount }} {{ displayToCurrency }}</h2>
-        </div>
-      </div>
-
-      <!-- 라인 차트 탭 내용 -->
-      <div v-if="activeTab === 'chart'" class="chart-box">
-        <CurrencyLineChart
-          :chartData="chartData"
-          :labels="chartLabels"
-          :fromCurrency="fromCurrency"
-          :toCurrency="toCurrency"
-        />
-      </div>
-
-      <!-- 알림창 컴포넌트 -->
-      <Alert v-if="alertVisible" :message="alertMessage" />
-
-    </div>
-  </div>
-</template>
-
 <style scoped>
-
-.page-container {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 100vh;
-  background-color: #f0f2f5;
+.v-container {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  overflow-y: auto;
+  background-color: white;
 }
 
-.currency-converter {
+.custom-card {
+  width: 100%;
+  height: auto;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 20px;
-  max-width: 500px;
-  width: 500px;
-  background: linear-gradient(135deg, #f5f7fa, #c3cfe2);
-  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
+  background: white;
+  color: #004225;
   border-radius: 12px;
-  min-height: 560px;
+  border: 2px solid #004225;
 }
 
-.tabs {
+.tabs-container {
   display: flex;
-  margin-bottom: 20px;
-  width: 100%;
+  justify-content: space-between;
+  background-color: #004225;
+  color: white;
+  height: 70px;
 }
 
-.tabs button {
+.tab {
   flex: 1;
-  padding: 10px;
-  font-size: 16px;
-  border: none;
-  cursor: pointer;
-  background-color: #e0e0e0;
-  transition: background-color 0.3s ease;
-}
-
-.tabs button.active {
-  background-color: #007bff;
-  color: white;
-}
-
-h1 {
-  font-size: 24px;
-  margin-bottom: 20px;
-  color: #333;
   text-align: center;
-}
-
-.converter-box {
-  display: flex;
-  flex-direction: column;
-  width: 100%;
-}
-
-.converter-box, .chart-box {
-  height: 400px;
-}
-
-#amount {
-  width: 478px;
-  height: 25px;
-}
-
-.input-group {
-  margin-bottom: 15px;
-}
-
-label {
-  font-size: 20px;
   font-weight: bold;
-  margin-bottom: 5px;
-  display: block;
-  color: #555;
+  color: #ffdb58;
 }
 
-input, select {
-  width: 100%;
-  height: 46px;
-  padding: 10px;
-  border: 1px solid #ddd;
-  border-radius: 6px;
-  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.1);
-  font-size: 16px;
-  color: #333;
-}
-
-button {
-  padding: 10px;
-  background-color: #13264E;
-  color: white;
-  font-size: 22px;
-  font-weight: bold;
+.divider {
   border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  transition: background-color 0.3s ease;
-  margin-top: 20px;
+  border-top: 2px solid #004225;
 }
 
-button:hover {
-  background-color: #0056b3;
+.currency-select-box .v-input__control,
+.amount-text-field .v-input__control {
+  height: 100px;
+  font-size: 30px;
 }
 
-.result {
-  font-size: 18px;
-  color: #333;
-  text-align: center;
-  height: 50px;
-  overflow: hidden;
+.v-card-text {
+  height: 245px;
 }
 
-.result h2 {
-  font-size: 24px;
-  font-weight: bold;
-  color: #007bff;
+.v-tabs--density-default {
+  --v-tabs-height: 68px;
 }
-
+.v-list-item {
+  color: black !important;
+  background-color: white !important;
+}
 </style>
