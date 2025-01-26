@@ -3,8 +3,8 @@
     <v-card class="custom-card">
       <!-- 탭 버튼 -->
       <v-tabs v-model="activeTab" class="tabs-container">
-        <v-tab class="tab" value="converter"><span style="color: white; font-size: 21px;">환율 변환기</span></v-tab>
-        <v-tab class="tab" value="chart"><span style="color: white; font-size: 21px;">환율 변동 차트</span></v-tab>
+        <v-tab class="tab" value="converter"><span style="color: white; font-size: 20px;">환율 변환기</span></v-tab>
+        <v-tab class="tab" value="chart"><span style="color: white; font-size: 20px;">환율 변동 차트</span></v-tab>
       </v-tabs>
 
       <!-- 탭 내용 -->
@@ -107,10 +107,13 @@
 // TODO 1 : 더 많은 국가 조회되도록 수정. https://api.frankfurter.app/currencies 링크 말고 더 좋은 링크 찾기.
 // TODO 2 : 위 링크 찾게되면, 국가별로 조회되도록 로직 수정 -> 화폐 단위 겹쳐도 됨. 그냥 전부 보여주는게 사용자 입장에서 좋을듯.
 // TODO 3 : Chart.js를 활용한 차트 개발. 어떤 차트를 어떻게 보여줄지? 1일, 1주일, 1개월, 1년 등 기간별로도 보여줄 것인지? 고려 필요.
-// TODO 4 : 소스 정리 && 전반적인 UI 디자인 손보기
+// TODO 4 : 나만의 탭 생성 -> 흔한 환율 변환기 기능 말고, 좀 색다른 기능 추가 필요. 대신 사용자가 쓸만한 기능이어야 함.
+// TODO 5 : 소스 정리 and 전반적인 UI 디자인 손보기
 
 import { ref, onMounted, watch } from 'vue';
 import axios from 'axios';
+
+import { representativeCountries } from "../data/representativeCountries";
 
 const activeTab = ref('converter');
 const amount1 = ref<number | ''>(1);
@@ -127,23 +130,28 @@ onMounted(async () => {
 
 const fetchCurrencies = async () => {
   try {
-    const validCurrencies = await (await fetch('https://api.frankfurter.app/currencies')).json();
     const countries = await (await fetch('https://restcountries.com/v3.1/all')).json();
 
-    console.log("validCurrencies ::: ", validCurrencies);
-    console.log("countries ::: ", countries);
-
-    currencies.value = Object.entries(validCurrencies).map(([code]) => {
-      const country = countries.find((c: any) =>
-          c.currencies && Object.keys(c.currencies).includes(code)
-      );
-
+    currencies.value = Object.entries(representativeCountries).map(([code, countryName]) => {
+      const country = countries.find((c: any) => c.name.common === countryName);
       return {
         code,
-        flag: country?.flags?.png || '', // 국기 URL
-        countryName: country?.name?.common || '', // 나라 이름
+        // flag: country?.flags?.png || '',
+        flag: country?.flags?.png || '/default-flag.png', // 기본 플래그 추가
+        countryName,
       };
+    }).filter(item => item.code && item.countryName) // 유효 데이터만 필터링
+        .sort((a, b) => a.countryName.localeCompare(b.countryName));
+
+    // 유럽연합(EU) 추가
+    currencies.value.push({
+      code: 'EUR',
+      flag: 'https://upload.wikimedia.org/wikipedia/commons/b/b7/Flag_of_Europe.svg', // 유럽연합 깃발
+      countryName: 'European Union',
     });
+
+    // 전체 데이터 정렬
+    currencies.value.sort((a, b) => a.countryName.localeCompare(b.countryName));
   } catch (error) {
     console.error('Error fetching currencies:', error);
   }
