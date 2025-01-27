@@ -91,6 +91,18 @@
               </v-col>
             </v-row>
           </v-col>
+
+          <!-- 변환 버튼 -->
+          <v-col>
+            <v-btn
+                class="swap-button"
+                color="#004225"
+                @click="swapCurrencies"
+            >
+              <v-icon left>mdi-autorenew</v-icon>
+              <p style="margin: 0px 0px 3px 3px; font-size: 25px;">SWAP</p>
+            </v-btn>
+          </v-col>
         </v-row>
 
         <!-- 2. 환율 변동 차트 -->
@@ -104,11 +116,9 @@
 
 <script lang="ts" setup>
 
-// TODO 1 : 더 많은 국가 조회되도록 수정. https://api.frankfurter.app/currencies 링크 말고 더 좋은 링크 찾기.
-// TODO 2 : 위 링크 찾게되면, 국가별로 조회되도록 로직 수정 -> 화폐 단위 겹쳐도 됨. 그냥 전부 보여주는게 사용자 입장에서 좋을듯.
-// TODO 3 : Chart.js를 활용한 차트 개발. 어떤 차트를 어떻게 보여줄지? 1일, 1주일, 1개월, 1년 등 기간별로도 보여줄 것인지? 고려 필요.
-// TODO 4 : 나만의 탭 생성 -> 흔한 환율 변환기 기능 말고, 좀 색다른 기능 추가 필요. 대신 사용자가 쓸만한 기능이어야 함.
-// TODO 5 : 소스 정리 and 전반적인 UI 디자인 손보기
+// TODO 1 : Chart.js를 활용한 차트 개발. 어떤 차트를 어떻게 보여줄지? 1일, 1주일, 1개월, 1년 등 기간별로도 보여줄 것인지? 고려 필요.
+// TODO 2 : 나만의 탭 생성 -> 흔한 환율 변환기 기능 말고, 좀 색다른 기능 추가 필요. 대신 사용자가 쓸만한 기능이어야 함.
+// TODO 3 : 소스 정리 and 전반적인 UI 디자인 손보기
 
 import { ref, onMounted, watch } from 'vue';
 import axios from 'axios';
@@ -217,6 +227,15 @@ const updateAmount2 = () => {
   }
 };
 
+const swapCurrencies = () => {
+  const tempCurrency = fromCurrency.value;
+  fromCurrency.value = toCurrency.value;
+  toCurrency.value = tempCurrency;
+
+  // 금액 재계산
+  updateAmount2();
+};
+
 watch([fromCurrency, toCurrency], async ([newFrom, newTo], [oldFrom, oldTo]) => {
   if (newFrom !== oldFrom || newTo !== oldTo) {
     await fetchRates();
@@ -274,7 +293,7 @@ watch([fromCurrency, toCurrency], async ([newFrom, newTo], [oldFrom, oldTo]) => 
 }
 
 .v-card-text {
-  height: 245px;
+  height: 310px;
 }
 
 .v-tabs--density-default {
@@ -284,4 +303,18 @@ watch([fromCurrency, toCurrency], async ([newFrom, newTo], [oldFrom, oldTo]) => 
   color: black !important;
   background-color: white !important;
 }
+
+.swap-button {
+  width: 100%;
+  margin: 0 auto; /* 중앙 정렬 */
+  font-size: 20px; /* 글자 크기 */
+  font-weight: bold; /* 글자 굵기 */
+  height: 53px !important;
+  text-transform: none; /* 문구 대문자 변환 방지 */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+}
+
 </style>
