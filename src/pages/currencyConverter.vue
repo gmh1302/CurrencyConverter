@@ -213,7 +213,7 @@ const updateAmount1 = () => {
     return;
   }
   if (rates.value[toCurrency.value] && rates.value[toCurrency.value][fromCurrency.value]) {
-    amount1.value = parseFloat((amount2.value * rates.value[toCurrency.value][fromCurrency.value]).toFixed(2)) || 0;
+    amount1.value = parseFloat((amount2.value * rates.value[toCurrency.value][fromCurrency.value]).toFixed(4)) || 0;
   }
 };
 
@@ -223,7 +223,7 @@ const updateAmount2 = () => {
     return;
   }
   if (rates.value[fromCurrency.value] && rates.value[fromCurrency.value][toCurrency.value]) {
-    amount2.value = parseFloat((amount1.value * rates.value[fromCurrency.value][toCurrency.value]).toFixed(2)) || 0;
+    amount2.value = parseFloat((amount1.value * rates.value[fromCurrency.value][toCurrency.value]).toFixed(4)) || 0;
   }
 };
 
@@ -232,8 +232,7 @@ const swapCurrencies = () => {
   fromCurrency.value = toCurrency.value;
   toCurrency.value = tempCurrency;
 
-  // 금액 재계산
-  updateAmount2();
+  updateAmount2(); // 최신 환율 기준으로 amount2 업데이트
 };
 
 watch([fromCurrency, toCurrency], async ([newFrom, newTo], [oldFrom, oldTo]) => {
