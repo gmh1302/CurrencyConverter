@@ -107,7 +107,23 @@
 
         <!-- 2. 환율 변동 차트 -->
         <v-row v-else>
-          <p>환율 변동 차트 콘텐츠가 여기에 표시됩니다.</p>
+          <v-col cols="12" class="chart-wrapper">
+            <canvas ref="chartRef"></canvas>
+          </v-col>
+
+          <!-- 기간 선택 버튼 -->
+          <v-col cols="12" class="d-flex justify-center">
+            <v-btn-group>
+              <v-btn
+                  v-for="period in periods"
+                  :key="period.value"
+                  :class="{ 'active-period': activePeriod === period.value }"
+                  @click="changePeriod(period.value)"
+              >
+                {{ period.label }}
+              </v-btn>
+            </v-btn-group>
+          </v-col>
         </v-row>
       </v-card-text>
     </v-card>
@@ -116,14 +132,19 @@
 
 <script lang="ts" setup>
 
-// TODO 1 : Chart.js를 활용한 차트 개발. 어떤 차트를 어떻게 보여줄지? 1일, 1주일, 1개월, 1년 등 기간별로도 보여줄 것인지? 고려 필요.
-// TODO 2 : 나만의 탭 생성 -> 흔한 환율 변환기 기능 말고, 좀 색다른 기능 추가 필요. 대신 사용자가 쓸만한 기능이어야 함.
-// TODO 3 : 소스 정리 and 전반적인 UI 디자인 손보기
+// TODO 1 : 확대했더니 그래프 사라짐. 버그 수정 필요
+// TODO 2 : 탭별(1개월,1년,5년)로 x축 시간 어떻게 보여줄지 수정 필요. 마우스 휠 했을 때도 보여지는게 자연스러워야 함.
+// TODO 3 : 소스 정리
 
-import { ref, onMounted, watch } from 'vue';
+import { ref, onMounted, watch, nextTick } from 'vue';
 import axios from 'axios';
+import { Chart, registerables } from 'chart.js';
 
 import { representativeCountries } from "../data/representativeCountries";
+
+import zoomPlugin from 'chartjs-plugin-zoom'; // ★ 추가
+
+Chart.register(...registerables, zoomPlugin); // ★ 플러그인 등록
 
 const activeTab = ref('converter');
 const amount1 = ref<number | ''>(1);
@@ -133,9 +154,26 @@ const toCurrency = ref('KRW');
 const currencies = ref<any[]>([]); // 화폐 단위 Select Box 목록
 const rates = ref<Record<string, Record<string, number>>>({});
 
+const activePeriod = ref(7); // 기본값 1주일
+const chartRef = ref<HTMLCanvasElement | null>(null);
+let chartInstance: Chart | null = null; // 차트 인스턴스
+
+const periods = ref([
+  { label: "1개월", value: 30 },
+  { label: "1년", value: 365 },
+  { label: "5년", value: 1825 },
+]);
+
+const changePeriod = (days: number) => {
+  activePeriod.value = days;
+  fetchHistoricalRates(days);
+}
+
 onMounted(async () => {
   await fetchCurrencies();
   await fetchRates();
+  await fetchHistoricalRates(30);
+  activePeriod.value = 30;
 });
 
 const fetchCurrencies = async () => {
@@ -235,11 +273,142 @@ const swapCurrencies = () => {
   updateAmount2(); // 최신 환율 기준으로 amount2 업데이트
 };
 
-watch([fromCurrency, toCurrency], async ([newFrom, newTo], [oldFrom, oldTo]) => {
+// 날짜 포맷을 YYYY-MM-DD로 변환하는 함수
+const formatDate = (date: Date): string => {
+  return date.toISOString().split("T")[0];
+};
+
+const fetchHistoricalRates = async (days: number) => {
+  try {
+    const today = new Date();
+    const pastDate = new Date();
+    pastDate.setDate(today.getDate() - days); // 현재 날짜에서 days일 전으로 이동
+
+    const start_date = formatDate(pastDate);
+    const end_date = formatDate(today);
+
+    // ✅ API 요청
+    const response = await axios.get(`https://api.frankfurter.app/${start_date}..${end_date}`, {
+      params: {
+        from: fromCurrency.value,
+        to: toCurrency.value,
+      },
+    });
+
+    const rates = response.data.rates;
+    if (!rates) {
+      console.error("No exchange rate data found.");
+      return;
+    }
+
+    let labels = Object.keys(rates); // 날짜 리스트
+    let data = labels.map(date => rates[date][toCurrency.value]);
+
+    // ✅ X축 필터링 (기간별 조정)
+    if (days === 30) {
+      // 1개월: 3일 간격으로 X축 표시
+      labels = labels.filter((_, index) => index % 3 === 0);
+      data = data.filter((_, index) => index % 3 === 0);
+    } else if (days === 365) {
+      // 1년: 매월 첫 번째 거래일만 X축에 표시
+      labels = labels.filter((date, index, arr) => {
+        const currentMonth = date.substring(0, 7);
+        return index === 0 || currentMonth !== arr[index - 1].substring(0, 7);
+      });
+      data = data.filter((_, index) => labels.includes(labels[index]));
+    } else if (days === 1825) {
+      // 5년: 매년 첫 번째 거래일만 X축에 표시
+      labels = labels.filter((date, index, arr) => {
+        const currentYear = date.substring(0, 4);
+        return index === 0 || currentYear !== arr[index - 1].substring(0, 4);
+      });
+      data = data.filter((_, index) => labels.includes(labels[index]));
+    }
+
+    updateChart(labels, data);
+  } catch (error) {
+    console.error("환율 데이터를 가져오는 중 오류 발생:", error);
+  }
+};
+
+const updateChart = (labels: string[], data: number[]) => {
+  if (!chartRef.value) return;
+
+  if (chartInstance) {
+    chartInstance.destroy();
+  }
+
+  chartInstance = new Chart(chartRef.value, {
+    type: "line",
+    data: {
+      labels,
+      datasets: [
+        {
+          label: `${fromCurrency.value} → ${toCurrency.value} 환율 변동`,
+          data,
+          borderColor: "#004225",
+          backgroundColor: "rgba(0, 66, 37, 0.2)",
+          borderWidth: 2,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          display: false,
+        },
+        zoom: {  // ★ Zoom & Pan 기능 추가
+          pan: {
+            enabled: true,
+            mode: "x", // ★ X축 방향으로만 이동 가능
+            speed: 10, // 이동 속도
+          },
+          zoom: {
+            wheel: {
+              enabled: true, // ★ 마우스 휠로 확대/축소 가능
+            },
+            pinch: {
+              enabled: true, // ★ 터치 패드 핀치 줌 지원
+            },
+            mode: "x", // ★ X축만 확대/축소 가능
+            limits: {
+              x: {
+                min: 10,  // ✅ 최소한 10개 이상의 데이터가 보이도록 제한
+                max: labels.length, // ✅ 최대 줌 범위는 전체 데이터 크기
+                minRange: 10, // ✅ 너무 확대되지 않도록 최소 범위 설정
+              },
+            },
+          },
+        },
+      },
+      scales: {
+        x: {
+          beginAtZero: false,
+        },
+        y: {
+          beginAtZero: false,
+        },
+      },
+    },
+  });
+};
+
+watch([fromCurrency, toCurrency, activeTab], async ([newFrom, newTo, newTab], [oldFrom, oldTo, oldTab]) => {
+  // ✅ 첫 번째 탭: 화폐 변경 시 환율 갱신
   if (newFrom !== oldFrom || newTo !== oldTo) {
     await fetchRates();
   }
+
+  // ✅ 두 번째 탭: '환율 변동 차트' 탭 선택 시 1주일 기준 차트 표시
+  if (newTab === 'chart' && oldTab !== 'chart') {
+    await nextTick(); // ★ DOM이 렌더링된 후 실행
+    await fetchHistoricalRates(30);
+    activePeriod.value = 30;
+  }
 });
+
 </script>
 
 <style scoped>
@@ -316,4 +485,16 @@ watch([fromCurrency, toCurrency], async ([newFrom, newTo], [oldFrom, oldTo]) => 
   border-radius: 12px;
 }
 
+.chart-wrapper {
+  height: 223px; /* 🛠 원하는 높이로 조절 (기존보다 증가) */
+}
+
+canvas {
+  height: 100% !important; /* 🛠 차트가 부모 요소 크기를 따르도록 설정 */
+}
+
+.active-period {
+  background-color: #004225 !important;
+  color: white !important;
+}
 </style>
