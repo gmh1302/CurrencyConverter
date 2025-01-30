@@ -133,8 +133,9 @@
 <script lang="ts" setup>
 
 // TODO 1 : 확대했더니 그래프 사라짐. 버그 수정 필요
-// TODO 2 : 탭별(1개월,1년,5년)로 x축 시간 어떻게 보여줄지 수정 필요. 마우스 휠 했을 때도 보여지는게 자연스러워야 함.
-// TODO 3 : 소스 정리
+// TODO 2 : 차트 DOT(점) 크기 조절 필요할까?
+// TODO 3 : 탭별(1개월,1년,5년)로 x축 시간 어떻게 보여줄지 수정 필요. 마우스 휠 했을 때도 보여지는게 자연스러워야 함.
+// TODO 4 : 소스 정리
 
 import { ref, onMounted, watch, nextTick } from 'vue';
 import axios from 'axios';
@@ -349,6 +350,9 @@ const updateChart = (labels: string[], data: number[]) => {
           borderColor: "#004225",
           backgroundColor: "rgba(0, 66, 37, 0.2)",
           borderWidth: 2,
+          pointRadius: 3,  // 🛠 점 크기 조절 (기본값: 3)
+          pointHoverRadius: 5,  // 🛠 마우스 호버 시 점 크기
+          pointStyle: "circle", // 🛠 점 스타일 (circle, rect, cross 등 가능)
         },
       ],
     },
@@ -486,7 +490,7 @@ watch([fromCurrency, toCurrency, activeTab], async ([newFrom, newTo, newTab], [o
 }
 
 .chart-wrapper {
-  height: 223px; /* 🛠 원하는 높이로 조절 (기존보다 증가) */
+  height: 230px; /* 🛠 원하는 높이로 조절 (기존보다 증가) */
 }
 
 canvas {
