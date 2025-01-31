@@ -1,4 +1,4 @@
-export const representativeCountries = {
+export const currencyCountryMapping = {
     KRW: "South Korea",        // 대한민국
     ZAR: "South Africa",       // 남아프리카 공화국
     NOK: "Norway",             // 노르웨이
