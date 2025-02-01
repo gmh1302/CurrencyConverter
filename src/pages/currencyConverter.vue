@@ -130,6 +130,9 @@
 </template>
 
 <script lang="ts" setup>
+
+// TODO : 변환 기능 최종 확인
+
 import { ref, onMounted, watch, nextTick } from 'vue';
 import axios from 'axios';
 import { Chart, ChartConfiguration, registerables } from 'chart.js';
@@ -297,13 +300,13 @@ const getExchangeRateHistory = async (days: number) => {
     // 기간별 데이터 필터링
     switch (days) {
     case 30: // 최근 1개월 데이터 (금요일만)
-      [labels, data] = filterWeeklyData(labels, data, rates);
+      [labels, data] = filterWeeklyData(labels, rates);
       break;
     case 365: // 최근 1년 데이터 (월별 대표 날짜만)
-      [labels, data] = filterMonthlyData(labels, data, rates);
+      [labels, data] = filterMonthlyData(labels, rates);
       break;
     case 1825: // 최근 5년 데이터 (연도별 대표 날짜만)
-      [labels, data] = filterYearlyData(labels, data, rates);
+      [labels, data] = filterYearlyData(labels, rates);
       break;
     }
 
@@ -331,7 +334,7 @@ const updateChart = (labels: string[], data: number[]) => {
       labels,
       datasets: [
         {
-          label: "",
+          label: `${fromCurrency.value} → ${toCurrency.value} 환율`,
           data,
           borderColor: "#004225",
           backgroundColor: "rgba(0, 66, 37, 0.2)",
@@ -346,7 +349,17 @@ const updateChart = (labels: string[], data: number[]) => {
       responsive: true,
       maintainAspectRatio: false,
       plugins: {
-        legend: { display: false },
+        legend: {
+          display: true,
+          position: 'top', // 위치 조정 가능 (top, bottom, left, right)
+          labels: {
+            font: {
+              size: 14,
+            },
+            color: '#004225',
+          },
+          onClick: (e: any) => e.stopPropagation(),
+        }
       },
       y: {
         suggestedMin: Math.min(...data) * 0.95, // 최소값보다 5% 낮게 설정
@@ -359,7 +372,7 @@ const updateChart = (labels: string[], data: number[]) => {
   chartInstance = new Chart(chartRef.value, chartConfig);
 };
 
-const filterWeeklyData = (labels: string[], data: number[], rates: Record<string, Record<string, number>>): [string[], number[]] => {
+const filterWeeklyData = (labels: string[], rates: Record<string, Record<string, number>>): [string[], number[]] => {
   const filteredLabels: string[] = [];
   const filteredData: number[] = [];
 
@@ -378,7 +391,7 @@ const filterWeeklyData = (labels: string[], data: number[], rates: Record<string
   return [filteredLabels, filteredData];
 };
 
-const filterMonthlyData = (labels: string[], data: number[], rates: Record<string, Record<string, number>>): [string[], number[]] => {
+const filterMonthlyData = (labels: string[], rates: Record<string, Record<string, number>>): [string[], number[]] => {
   const monthMap = new Map<string, string>();
 
   labels.forEach(date => {
@@ -397,7 +410,7 @@ const filterMonthlyData = (labels: string[], data: number[], rates: Record<strin
   return [filteredLabels.map(date => date.substring(0, 7)), filteredData];
 };
 
-const filterYearlyData = (labels: string[], data: number[], rates: Record<string, Record<string, number>>): [string[], number[]] => {
+const filterYearlyData = (labels: string[], rates: Record<string, Record<string, number>>): [string[], number[]] => {
   const yearMap = new Map<string, string>();
 
   labels.forEach(date => {
@@ -531,5 +544,12 @@ canvas {
   align-items: center;
   justify-content: center;
   border-radius: 12px;
+}
+.chart-title {
+  font-size: 20px;
+  font-weight: bold;
+  text-align: center;
+  margin-bottom: 10px;
+  color: #004225;
 }
 </style>
