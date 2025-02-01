@@ -131,8 +131,6 @@
 
 <script lang="ts" setup>
 
-// TODO : 변환 기능 최종 확인
-
 import { ref, onMounted, watch, nextTick } from 'vue';
 import axios from 'axios';
 import { Chart, ChartConfiguration, registerables } from 'chart.js';
